@@ -1,0 +1,8 @@
+{
+	"admin/services/vianes": {
+		"title": "Vianes",
+		"order": 60,
+		"action": { "type": "view", "path": "vianes/config" },
+		"depends": { "acl": [ "luci-app-vianes" ] }
+	}
+}

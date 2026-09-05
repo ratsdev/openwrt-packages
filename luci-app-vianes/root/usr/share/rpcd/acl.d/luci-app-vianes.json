@@ -1,0 +1,19 @@
+{
+	"luci-app-vianes": {
+		"description": "Grant access to Vianes configuration and logs",
+		"read": {
+			"file": {
+				"/etc/vianes/config.yaml": [ "read" ],
+				"/sbin/logread": [ "exec" ]
+			},
+			"uci": [ "vianes" ]
+		},
+		"write": {
+			"file": {
+				"/etc/vianes/config.yaml": [ "write" ],
+				"/etc/init.d/vianes": [ "exec" ]
+			},
+			"uci": [ "vianes" ]
+		}
+	}
+}

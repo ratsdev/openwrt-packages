@@ -1,0 +1,148 @@
+name: Packages
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: ${{ matrix.release }} ${{ matrix.pkgarch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        release:
+          - "25.12.5"
+        pkgarch:
+          - aarch64_cortex-a53
+          - x86_64
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: packages
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          pkgs="$(.github/sdk/get-packages.sh)"
+          if [ "$pkgs" = skip ] && [ "$EVENT_NAME" = push ]; then
+            pkgs=all
+          fi
+          echo "packages=$pkgs" | tee -a "$GITHUB_OUTPUT"
+
+      - if: steps.packages.outputs.packages != 'skip'
+        env:
+          PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+          PACKAGES: ${{ steps.packages.outputs.packages }}
+          PKGARCH: ${{ matrix.pkgarch }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "ARCH=${{ matrix.pkgarch }}-${{ matrix.release }}" \
+            -t sdk .github/sdk
+          if [ "$PACKAGES" != all ] && [ "${{ github.event_name }}" = push ]; then
+            echo "no previous feed; building all"
+            PACKAGES=all
+          fi
+          mkdir -p artifacts
+          docker run --rm \
+            --env PRIVATE_KEY --env PACKAGES --env PKGARCH \
+            -v "$PWD:/feed" -v "$PWD/artifacts:/artifacts" \
+            sdk
+          sudo chown -R "$(id -u):$(id -g)" artifacts
+
+      - if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          dest="feed/${{ matrix.release }}/${{ matrix.pkgarch }}"
+          src="artifacts/bin/packages/${{ matrix.pkgarch }}/vianes"
+          mkdir -p "$dest"
+          if [ -d "$src" ]; then
+            cp -aL "$src"/. "$dest/"
+          else
+            echo "nothing to publish for ${{ matrix.pkgarch }}"
+            exit 1
+          fi
+
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-${{ matrix.release }}-${{ matrix.pkgarch }}
+          path: feed
+          if-no-files-found: error
+          retention-days: 14
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.release }}-${{ matrix.pkgarch }}
+          path: artifacts/logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: feed-*
+          path: site
+          merge-multiple: true
+
+      - run: |
+          set -euo pipefail
+          [ -n "${PRIVATE_KEY:-}" ] || {
+            echo "APK_PRIVATE_KEY is not set"
+            exit 1
+          }
+          printf '%s\n' "$PRIVATE_KEY" | openssl pkey -pubout -out site/release.pem
+        env:
+          PRIVATE_KEY: ${{ secrets.APK_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v5
+        with:
+          path: repo
+
+      - working-directory: repo
+        run: |
+          set -euo pipefail
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR_ID+$GITHUB_ACTOR@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin release >/dev/null; then
+            git fetch origin release:release
+            git checkout release
+          else
+            git checkout --orphan release
+            git rm -rf --quiet . || true
+            git clean -fdx
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a ../site/. .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+            exit 0
+          fi
+          git commit -m "Publish ${{ github.ref_name }}"
+          git push origin HEAD:release
+
