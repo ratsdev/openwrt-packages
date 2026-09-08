@@ -10,12 +10,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vianes
-PKG_VERSION:=0.2.0
+PKG_VERSION:=0.2.1
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/ratsdev/vianes/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=452dd82e90fea4c84951337a6c449f66c6cc8b3598bd9af3c81663ff7fde46a5
+PKG_HASH:=b5f1b2dbf4ced2289939796989941334690f22aa7bd60e68499ff4ac3af63b74
 
 PKG_MAINTAINER:=ratsdev <admin@rats.dev>
 PKG_LICENSE:=Apache-2.0
