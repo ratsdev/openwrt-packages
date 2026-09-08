@@ -4,7 +4,8 @@ FROM docker.io/openwrt/sdk:${ARCH}
 
 USER root
 
-RUN apt-get update \
+# bullseye EOL 2026-08-31: security InRelease is no longer re-signed, skip its Valid-Until check.
+RUN apt-get -o Acquire::Check-Valid-Until=false update \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates \
 		clang \
