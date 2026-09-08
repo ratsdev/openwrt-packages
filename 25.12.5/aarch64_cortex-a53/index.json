@@ -3,6 +3,6 @@
   "architecture": "aarch64_cortex-a53",
   "packages": {
     "luci-app-vianes": "0.1.0-r1",
-    "vianes": "0.2.0-r1"
+    "vianes": "0.2.1-r1"
   }
 }
